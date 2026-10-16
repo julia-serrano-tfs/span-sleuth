@@ -5,11 +5,14 @@ It doesn't provide the full telemetry context to the investigation event. It jus
 
 ## Architecture status
 
-TypeScript architecture scaffold only. There is no running HTTP server,
-database implementation, queue integration, or business logic. Concrete entry
-points throw `NotImplementedError`; abstract adapters cannot be instantiated.
-The existing Dockerfile and Compose file are intentionally left untouched until
-there is a runnable service. Nothing here accepts a webhook or publishes a job.
+TypeScript architecture scaffold with an optional local PostgreSQL database and
+versioned migrations for incidents and alert occurrences in the service-owned
+`incident_management` schema of the shared `span_sleuth` database. There is no running
+HTTP server, repository implementation, queue integration, or business logic.
+Concrete entry points throw `NotImplementedError`; abstract adapters cannot be
+instantiated. The application Dockerfile remains empty; the optional Compose
+layer starts only shared PostgreSQL, role provisioning, and migration tooling. Nothing here accepts a
+webhook or publishes a job.
 
 ## Bounded context and ownership
 
@@ -138,3 +141,8 @@ Build output is in `dist/`. No start command is provided because execution is no
 implemented. Before adding behavior, cover duplicate notifications, concurrent
 creation, stale updates, correlation ambiguity, resolution ordering, transaction
 rollback, and outbox redelivery with meaningful tests.
+
+## Local incident database
+
+See [DATABASE.md](DATABASE.md) for local PostgreSQL provisioning, migrations,
+schema policies, and isolated database integration tests.
