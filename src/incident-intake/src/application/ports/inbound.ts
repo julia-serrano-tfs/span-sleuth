@@ -1,5 +1,10 @@
 import type { IncidentId } from "../../domain/value-objects.js";
-import type { IncidentContext, InvestigationSummaryUpdate, ProcessAlertNotificationCommand, ProcessAlertNotificationResult } from "../contracts.js";
+import type {
+  IncidentContext,
+  InvestigationSummaryUpdate,
+  ProcessAlertNotificationCommand,
+  ProcessAlertNotificationResult,
+} from "../contracts.js";
 
 export interface ProcessAlertNotification {
   execute(command: ProcessAlertNotificationCommand): Promise<ProcessAlertNotificationResult>;

@@ -11,9 +11,8 @@ or PostgreSQL installation is needed to start the database or apply migrations.
 Run the following commands from the repository root:
 
 ```sh
-docker compose --env-file .env --env-file .env.override --project-name span-sleuth-data -f compose.incidents.yaml up --detach --wait span-sleuth-db
-docker compose --env-file .env --env-file .env.override --project-name span-sleuth-data -f compose.incidents.yaml run --rm span-sleuth-db-provision
-docker compose --env-file .env --env-file .env.override --project-name span-sleuth-data -f compose.incidents.yaml run --rm incident-db-migrate
+make start-incident-db
+make migrate-incident-db
 ```
 
 The database runs in the dedicated Compose project `span-sleuth-data`;
@@ -40,9 +39,9 @@ containers on the same network connect to `span-sleuth-db:5432`; applications
 running on the host use `127.0.0.1:5433` instead. App connections automatically
 use their service schema through a role-specific `search_path`.
 
-Start the shared server, run the privileged role provisioner, and then run
-`incident-db-migrate` to apply only Incident Management migrations using its
-restricted migration account. Service
+`make start-incident-db` starts the shared server and runs the privileged role
+provisioner. `make migrate-incident-db` depends on that setup, then applies only
+Incident Management migrations using its restricted migration account. Service
 application processes must never receive the admin or migration credentials.
 
 Open a database console without installing PostgreSQL locally:
@@ -56,14 +55,14 @@ docker compose --env-file .env --env-file .env.override \
 Stop the local database with:
 
 ```sh
-docker compose --env-file .env --env-file .env.override --project-name span-sleuth-data -f compose.incidents.yaml stop span-sleuth-db
+make stop-incident-db
 ```
 
 Data survives container recreation in the `span-sleuth-db-data` named volume.
 The PostgreSQL image initializes the admin credentials only for a new data
 directory: changing `SPAN_SLEUTH_DB_ADMIN_PASSWORD` does not change the password
 of an existing admin. The provisioner updates the four service-role passwords
-when the provisioning service runs. The image version comes from the repository's
+when `make start-incident-db` runs. The image version comes from the repository's
 existing `POSTGRES_IMAGE` setting.
 
 The earlier database-only prototype used a different project and volume,
@@ -164,13 +163,13 @@ files. All pending migrations and their version records commit together; an
 error rolls them back. Use migrations that can run inside a transaction.
 
 This does not rely on first-start initialization scripts: rerun
-the `incident-db-migrate` Compose service to upgrade an existing database. There is no automatic
+`make migrate-incident-db` to upgrade an existing database. There is no automatic
 migration step hidden inside normal application startup.
 
 ## Integration tests
 
 ```sh
-bash src/incident-intake/scripts/test-database.sh
+make test-incident-db
 ```
 
 Tests create an isolated temporary PostgreSQL container with an in-memory data
@@ -195,3 +194,47 @@ connections, SQL, row mapping, and transaction handling will live under
 `src/adapters/outbound/`; bootstrap will construct and inject those adapters.
 The current `TransactionContext` also includes future receipts, summaries, and
 outbox ports. This schema slice does not claim to implement that full contract.
+
+## Before opening a PR
+
+Run the same command used by the Incident database GitHub Actions workflow:
+
+```sh
+make check-incident-db
+```
+
+This checks Bash with ShellCheck and shfmt, YAML with yamllint, Markdown with
+markdownlint, and YAML/Markdown formatting with Prettier. It also validates the
+standalone and combined Compose configurations, runs the isolated PostgreSQL
+integration suite, and checks tracked-file whitespace. It does not start or
+modify your persistent local database.
+
+The checks and formatters run in a cached local tools image built from
+`src/shared/database/Dockerfile.tools`, so Docker and Make are the only host
+dependencies. `make lint-incident-db` runs just lint and formatting checks;
+`make check-incident-db-compose` validates Compose without starting containers.
+The image is built on demand, with Docker reusing unchanged layers.
+
+To apply Bash, YAML, and Markdown formatting:
+
+```sh
+make format-incident-db
+make check-incident-db
+```
+
+Formatting does not rewrite SQL migrations: applied migration checksums must
+remain stable. SQL syntax and constraints are exercised against PostgreSQL in
+the integration tests. Formatting is explicit; checks never rewrite source. YAML and Markdown reuse
+the Prettier settings in `src/shared/typescript/prettier.config.mjs`, also used
+by the TypeScript service commands.
+
+Fork-owned Intake, Investigation, shared database/TypeScript tooling, the incidents Compose
+file, and the database/service CI workflows are excluded from both `make checklicense`
+and `make addlicense`. Existing upstream files retain their license checks.
+
+The workflow runs automatically for pull requests targeting `main` and pushes to
+`main`. It has no path filter, so its status is available for every PR.
+Configure its `Incident database checks` status as a required branch-protection
+check if you want failed checks to block merging. The repository-wide
+`make check` remains separate; its changelog validation still requires a real
+issue or PR reference.

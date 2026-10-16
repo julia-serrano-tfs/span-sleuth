@@ -11,6 +11,15 @@ MISSPELL_BINARY=bin/misspell
 MISSPELL = $(TOOLS_DIR)/$(MISSPELL_BINARY)
 ADDLICENSE_BINARY=bin/addlicense
 ADDLICENSE = $(TOOLS_DIR)/$(ADDLICENSE_BINARY)
+SERVICE_LICENSE_IGNORES=\
+	-ignore "src/incident-intake/**" \
+	-ignore "src/investigation-worker/**" \
+	-ignore "src/shared/database/**" \
+	-ignore "src/shared/typescript/**" \
+	-ignore "compose.incidents.yaml" \
+	-ignore ".github/workflows/incident-db.yml" \
+	-ignore ".github/workflows/services.yml" \
+	-ignore ".github/workflows/assign-fork-reviewers.yml"
 
 DOCKER_CMD ?= docker
 DOCKER_COMPOSE_CMD ?= docker compose
@@ -28,6 +37,8 @@ DOCKER_COMPOSE_FILES_PROFILING=-f compose.profiling.yaml
 DOCKER_COMPOSE_FILES_EXTRAS=-f compose.extras.yaml
 DOCKER_COMPOSE_FILES_TESTS=-f compose.tests.yaml
 DOCKER_COMPOSE_FILES_AGENT=-f compose.agent.yaml
+DOCKER_COMPOSE_FILES_INCIDENTS=-f compose.incidents.yaml
+INCIDENT_DB_COMPOSE=$(DOCKER_COMPOSE_CMD) $(DOCKER_COMPOSE_ENV) --project-name span-sleuth-data $(DOCKER_COMPOSE_FILES_INCIDENTS)
 
 # Default: full demo + observability stack + extras stub
 DOCKER_COMPOSE_FILES=$(DOCKER_COMPOSE_FILES_FULL) $(DOCKER_COMPOSE_FILES_OBSERVABILITY) $(DOCKER_COMPOSE_FILES_EXTRAS)
@@ -92,39 +103,39 @@ yamllint: install-yamllint
 .PHONY: checklicense
 checklicense:	$(ADDLICENSE)
 	@echo "Checking license headers..."
-	$(ADDLICENSE) -check -c "The OpenTelemetry Authors" -l apache -s=only -y "" \
-		-ignore node_modules/** \
-		-ignore .expo/** \
-		-ignore Pods/** \
+	$(ADDLICENSE) -check -c "The OpenTelemetry Authors" -l apache -s=only -y "" $(SERVICE_LICENSE_IGNORES) \
+		-ignore "**/node_modules/**" \
+		-ignore ".expo/**" \
+		-ignore "Pods/**" \
 		-ignore ".chloggen/**" \
-		-ignore **/extras/** \
-		-ignore **/vendor/** \
-		-ignore **/.venv/** \
-		-ignore **/dist/** \
-		-ignore **/build/** \
-		-ignore **/*_pb2.py \
-		-ignore **/*_pb2_grpc.py \
-		-ignore **/genproto/** \
-		-ignore **/protos/*.ts \
+		-ignore "**/extras/**" \
+		-ignore "**/vendor/**" \
+		-ignore "**/.venv/**" \
+		-ignore "**/dist/**" \
+		-ignore "**/build/**" \
+		-ignore "**/*_pb2.py" \
+		-ignore "**/*_pb2_grpc.py" \
+		-ignore "**/genproto/**" \
+		-ignore "**/protos/*.ts" \
 		.
 
 .PHONY: addlicense
 addlicense:	$(ADDLICENSE)
 	@echo "Adding license headers..."
-	$(ADDLICENSE) -c "The OpenTelemetry Authors" -l apache -s=only -y "" \
-		-ignore node_modules/** \
-		-ignore .expo/** \
-		-ignore Pods/** \
+	$(ADDLICENSE) -c "The OpenTelemetry Authors" -l apache -s=only -y "" $(SERVICE_LICENSE_IGNORES) \
+		-ignore "**/node_modules/**" \
+		-ignore ".expo/**" \
+		-ignore "Pods/**" \
 		-ignore ".chloggen/**" \
-		-ignore **/extras/** \
-		-ignore **/vendor/** \
-		-ignore **/.venv/** \
-		-ignore **/dist/** \
-		-ignore **/build/** \
-		-ignore **/*_pb2.py \
-		-ignore **/*_pb2_grpc.py \
-		-ignore **/genproto/** \
-		-ignore **/protos/*.ts \
+		-ignore "**/extras/**" \
+		-ignore "**/vendor/**" \
+		-ignore "**/.venv/**" \
+		-ignore "**/dist/**" \
+		-ignore "**/build/**" \
+		-ignore "**/*_pb2.py" \
+		-ignore "**/*_pb2_grpc.py" \
+		-ignore "**/genproto/**" \
+		-ignore "**/protos/*.ts" \
 		.
 
 .PHONY: checklinks
@@ -417,3 +428,79 @@ endif
 .PHONY: build-react-native-android
 build-react-native-android:
 	$(DOCKER_CMD) build -f src/react-native-app/android.Dockerfile --platform=linux/amd64 --output=. src/react-native-app
+
+.PHONY: start-incident-db
+start-incident-db:
+	$(INCIDENT_DB_COMPOSE) up --detach --wait span-sleuth-db
+	$(INCIDENT_DB_COMPOSE) run --rm span-sleuth-db-provision
+
+.PHONY: migrate-incident-db
+migrate-incident-db: start-incident-db
+	$(INCIDENT_DB_COMPOSE) run --rm incident-db-migrate
+
+.PHONY: test-incident-db
+test-incident-db:
+	bash src/incident-intake/scripts/test-database.sh
+
+.PHONY: stop-incident-db
+stop-incident-db:
+	$(INCIDENT_DB_COMPOSE) stop span-sleuth-db
+
+INCIDENT_DB_TOOLS_IMAGE ?= span-sleuth-db-tools:local
+INCIDENT_DB_SHELL_FILES=src/shared/database/provision.sh src/incident-intake/scripts/migrate.sh src/incident-intake/scripts/test-database.sh
+INCIDENT_DB_FORMAT_FILES=compose.incidents.yaml .github/workflows/incident-db.yml src/incident-intake/DATABASE.md src/incident-intake/README.md
+INCIDENT_DB_TOOL_RUN=$(DOCKER_CMD) run --rm --workdir /workspace --env HOME=/tmp --user "$(shell id -u):$(shell id -g)"
+
+.PHONY: incident-db-tools
+incident-db-tools:
+	$(DOCKER_CMD) build --tag $(INCIDENT_DB_TOOLS_IMAGE) --file src/shared/database/Dockerfile.tools src/shared/database
+
+.PHONY: lint-incident-db
+lint-incident-db: incident-db-tools
+	$(INCIDENT_DB_TOOL_RUN) --mount "type=bind,source=$(PWD),target=/workspace,readonly" $(INCIDENT_DB_TOOLS_IMAGE) \
+		bash -ec 'shellcheck $(INCIDENT_DB_SHELL_FILES); \
+		shfmt -d -i 4 $(INCIDENT_DB_SHELL_FILES); \
+		yamllint --strict compose.incidents.yaml .github/workflows/incident-db.yml; \
+		markdownlint -c .markdownlint.yaml src/incident-intake/DATABASE.md src/incident-intake/README.md; \
+		prettier --check --config src/shared/typescript/prettier.config.mjs $(INCIDENT_DB_FORMAT_FILES)'
+
+.PHONY: format-incident-db
+format-incident-db: incident-db-tools
+	$(INCIDENT_DB_TOOL_RUN) --mount "type=bind,source=$(PWD),target=/workspace" $(INCIDENT_DB_TOOLS_IMAGE) \
+		bash -ec 'shfmt -w -i 4 $(INCIDENT_DB_SHELL_FILES); \
+		prettier --write --config src/shared/typescript/prettier.config.mjs $(INCIDENT_DB_FORMAT_FILES)'
+
+.PHONY: check-incident-db-compose
+check-incident-db-compose:
+	$(DOCKER_COMPOSE_CMD) --env-file .env $(DOCKER_COMPOSE_FILES_INCIDENTS) config --quiet
+	$(DOCKER_COMPOSE_CMD) --env-file .env $(DOCKER_COMPOSE_FILES_FULL) $(DOCKER_COMPOSE_FILES_OBSERVABILITY) $(DOCKER_COMPOSE_FILES_INCIDENTS) $(DOCKER_COMPOSE_FILES_EXTRAS) config --quiet
+
+.PHONY: check-incident-db
+check-incident-db: lint-incident-db check-incident-db-compose test-incident-db
+	git diff --check -- Makefile compose.incidents.yaml .github/workflows/incident-db.yml src/incident-intake src/shared/database
+
+.PHONY: install-service-tools
+install-service-tools:
+	npm ci
+	npm --prefix src/incident-intake ci
+
+.PHONY: lint-incident-intake
+lint-incident-intake:
+	npm --prefix src/incident-intake run lint
+
+.PHONY: format-incident-intake
+format-incident-intake:
+	npm --prefix src/incident-intake run format
+
+.PHONY: check-incident-intake
+check-incident-intake:
+	npm --prefix src/incident-intake run check
+	npm --prefix src/incident-intake run test --if-present
+
+.PHONY: check-services
+check-services: check-incident-intake
+	npx prettier --check --config src/shared/typescript/prettier.config.mjs src/shared/typescript/*.mjs .github/workflows/services.yml .github/workflows/assign-fork-reviewers.yml
+
+.PHONY: format-services
+format-services: format-incident-intake
+	npx prettier --write --config src/shared/typescript/prettier.config.mjs src/shared/typescript/*.mjs .github/workflows/services.yml .github/workflows/assign-fork-reviewers.yml

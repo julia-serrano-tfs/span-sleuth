@@ -7,9 +7,10 @@ interface EventMetadata {
   readonly occurredAt: Instant;
 }
 
-export type IncidentDomainEvent = EventMetadata & (
-  | { readonly type: "IncidentOpened"; readonly initialAlert: AlertKey }
-  | { readonly type: "AlertCorrelatedToIncident"; readonly alert: AlertKey }
-  | { readonly type: "IncidentUpdated"; readonly changedAlert: AlertKey }
-  | { readonly type: "IncidentResolved"; readonly resolution: Resolution }
-);
+export type IncidentDomainEvent = EventMetadata &
+  (
+    | { readonly type: "IncidentOpened"; readonly initialAlert: AlertKey }
+    | { readonly type: "AlertCorrelatedToIncident"; readonly alert: AlertKey }
+    | { readonly type: "IncidentUpdated"; readonly changedAlert: AlertKey }
+    | { readonly type: "IncidentResolved"; readonly resolution: Resolution }
+  );
