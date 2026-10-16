@@ -1,0 +1,64 @@
+# Optional shared Span Sleuth database, with service-owned schemas.
+# Start and provision roles with: make start-incident-db
+services:
+  span-sleuth-db:
+    image: ${POSTGRES_IMAGE}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: span_sleuth
+      POSTGRES_USER: span_sleuth_admin
+      POSTGRES_PASSWORD: ${SPAN_SLEUTH_DB_ADMIN_PASSWORD:-span_sleuth_local_admin}
+    ports:
+      - "127.0.0.1:${SPAN_SLEUTH_DB_PORT:-5433}:5432"
+    volumes:
+      - span-sleuth-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U span_sleuth_admin -d span_sleuth"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  span-sleuth-db-provision:
+    image: ${POSTGRES_IMAGE}
+    profiles: [tools]
+    environment:
+      PGHOST: span-sleuth-db
+      PGPORT: "5432"
+      PGDATABASE: span_sleuth
+      PGUSER: span_sleuth_admin
+      PGPASSWORD: ${SPAN_SLEUTH_DB_ADMIN_PASSWORD:-span_sleuth_local_admin}
+      INCIDENT_DB_PASSWORD: ${INCIDENT_DB_PASSWORD:-incident_local_password}
+      INCIDENT_DB_MIGRATION_PASSWORD: ${INCIDENT_DB_MIGRATION_PASSWORD:-incident_local_migration_password}
+      INVESTIGATION_DB_PASSWORD: ${INVESTIGATION_DB_PASSWORD:-investigation_local_password}
+      INVESTIGATION_DB_MIGRATION_PASSWORD: ${INVESTIGATION_DB_MIGRATION_PASSWORD:-investigation_local_migration_password}
+    depends_on:
+      span-sleuth-db:
+        condition: service_healthy
+    volumes:
+      - ./src/shared/database:/workspace:ro
+    entrypoint: [bash, /workspace/provision.sh]
+
+  incident-db-migrate:
+    image: ${POSTGRES_IMAGE}
+    profiles: [tools]
+    environment:
+      PGHOST: span-sleuth-db
+      PGPORT: "5432"
+      PGDATABASE: span_sleuth
+      PGUSER: incident_migrator
+      PGPASSWORD: ${INCIDENT_DB_MIGRATION_PASSWORD:-incident_local_migration_password}
+    depends_on:
+      span-sleuth-db:
+        condition: service_healthy
+    volumes:
+      - ./src/incident-intake/migrations:/workspace/migrations:ro
+      - ./src/incident-intake/scripts:/workspace/scripts:ro
+    entrypoint: [bash, /workspace/scripts/migrate.sh]
+
+volumes:
+  span-sleuth-db-data:

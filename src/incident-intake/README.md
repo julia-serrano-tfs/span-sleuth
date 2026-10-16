@@ -5,11 +5,14 @@ It doesn't provide the full telemetry context to the investigation event. It jus
 
 ## Architecture status
 
-TypeScript architecture scaffold only. There is no running HTTP server,
-database implementation, queue integration, or business logic. Concrete entry
-points throw `NotImplementedError`; abstract adapters cannot be instantiated.
-The existing Dockerfile and Compose file are intentionally left untouched until
-there is a runnable service. Nothing here accepts a webhook or publishes a job.
+TypeScript architecture scaffold with an optional local PostgreSQL database and
+versioned migrations for incidents and alert occurrences in the service-owned
+`incident_management` schema of the shared `span_sleuth` database. There is no running
+HTTP server, repository implementation, queue integration, or business logic.
+Concrete entry points throw `NotImplementedError`; abstract adapters cannot be
+instantiated. The application Dockerfile remains empty; the optional Compose
+layer starts only shared PostgreSQL, role provisioning, and migration tooling. Nothing here accepts a
+webhook or publishes a job.
 
 ## Bounded context and ownership
 
@@ -26,16 +29,16 @@ report. An investigation finishing does not imply that an incident has recovered
 
 ## Domain vocabulary
 
-| Concept | DDD role | Meaning |
-| --- | --- | --- |
-| Incident | Aggregate root and entity | Operational problem with identity and revision |
-| AlertOccurrence | Child entity | A firing episode, identified by source, fingerprint, and start time |
-| AlertKey | Value object | Compound occurrence identity |
-| ServiceReference | Value object | Service and environment description |
-| TimeRange | Value object | A query window, reserved for future use |
-| Resolution | Value object | Time and reason for resolving an incident |
-| CorrelationPolicy | Domain service contract | Decides whether an alert belongs to a candidate incident |
-| IncidentDomainEvent | Domain event union | Facts produced by aggregate transitions |
+| Concept             | DDD role                  | Meaning                                                             |
+| ------------------- | ------------------------- | ------------------------------------------------------------------- |
+| Incident            | Aggregate root and entity | Operational problem with identity and revision                      |
+| AlertOccurrence     | Child entity              | A firing episode, identified by source, fingerprint, and start time |
+| AlertKey            | Value object              | Compound occurrence identity                                        |
+| ServiceReference    | Value object              | Service and environment description                                 |
+| TimeRange           | Value object              | A query window, reserved for future use                             |
+| Resolution          | Value object              | Time and reason for resolving an incident                           |
+| CorrelationPolicy   | Domain service contract   | Decides whether an alert belongs to a candidate incident            |
+| IncidentDomainEvent | Domain event union        | Facts produced by aggregate transitions                             |
 
 The Incident interface is a behavior contract, not an aggregate implementation.
 Its snapshot is read-only data for persistence and correlation. Value objects
@@ -138,3 +141,45 @@ Build output is in `dist/`. No start command is provided because execution is no
 implemented. Before adding behavior, cover duplicate notifications, concurrent
 creation, stale updates, correlation ambiguity, resolution ordering, transaction
 rollback, and outbox redelivery with meaningful tests.
+
+## Local incident database
+
+See [DATABASE.md](DATABASE.md) for database startup, migrations, schema policies,
+and isolated PostgreSQL integration tests.
+
+## TypeScript quality checks
+
+From the repository root, install the shared quality tools and Intake dependencies:
+
+```sh
+make install-service-tools
+```
+
+Use Node.js 22.22.2 or later in the Node.js 22 release line, matching CI's
+Node.js 22 setup and the development dependencies' engine requirements.
+
+```sh
+make format-services
+make check-services
+```
+
+`make check-services` runs Intake's ESLint checks, Prettier formatting check, and
+TypeScript type check. It also runs Intake tests if the service defines a `test`
+script. This scaffold currently has no TypeScript test suite. Database tests stay
+in `make check-incident-db`.
+
+For Intake only, use `make lint-incident-intake`, `make format-incident-intake`,
+or `make check-incident-intake`. Within `src/incident-intake`, the corresponding
+npm commands are `npm run lint`, `npm run format`, `npm run format:check`,
+`npm run typecheck`, and `npm run check`.
+
+ESLint and Prettier configuration lives in `src/shared/typescript/`; dependencies
+are pinned in the root `package.json` and lockfile. Intake's small local config
+files reuse those settings. ESLint uses the recommended JavaScript and TypeScript
+rules plus consistent type imports; TypeScript performs type checking separately.
+Formatting does not run business logic or modify SQL migrations.
+
+The Service quality workflow runs these checks on pull requests to `main` and
+pushes to `main`. Investigation currently has no TypeScript project, so it is not
+included in `check-services` yet. Reuse the shared config and add its target when
+the worker's package and source are introduced.

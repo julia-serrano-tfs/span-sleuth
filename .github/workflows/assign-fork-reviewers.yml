@@ -1,0 +1,50 @@
+name: Assign fork reviewers
+
+on:
+  # prettier-ignore
+  pull_request_target:  # zizmor: ignore[dangerous-triggers] metadata only; no PR code is checked out or executed
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: fork-reviewers-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  request-review:
+    if: github.repository == 'julia-serrano-tfs/span-sleuth'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Request the other collaborator's review
+        # v9.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const reviewers = new Map([
+              ["alejandra-bermo", "julia-serrano-tfs"],
+              ["julia-serrano-tfs", "alejandra-bermo"],
+            ]);
+            const request = {
+              ...context.repo,
+              pull_number: context.payload.pull_request.number,
+            };
+            const { data: pr } = await github.rest.pulls.get(request);
+            const reviewer = reviewers.get(pr.user.login);
+            if (!reviewer || pr.draft || pr.state !== "open") {
+              core.info("No automatic review request needed.");
+              return;
+            }
+            if (pr.requested_reviewers.some(user => user.login === reviewer)) {
+              core.info("The collaborator's review is already requested.");
+              return;
+            }
+            const reviews = await github.paginate(github.rest.pulls.listReviews, request);
+            if (reviews.some(review => review.user?.login === reviewer &&
+                review.state !== "PENDING" && review.state !== "DISMISSED")) {
+              core.info("The collaborator has already reviewed this PR.");
+              return;
+            }
+            await github.rest.pulls.requestReviewers({ ...request, reviewers: [reviewer] });

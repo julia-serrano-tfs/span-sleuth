@@ -10,12 +10,9 @@
     "declaration": true,
     "rootDir": "src",
     "outDir": "dist",
-    "lib": [
-      "ES2022"
-    ],
-    "noEmitOnError": true
+    "lib": ["ES2022"],
+    "noEmitOnError": true,
+    "types": []
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

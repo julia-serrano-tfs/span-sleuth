@@ -1,0 +1,11 @@
+FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends shellcheck shfmt python3-venv \
+    && python3 -m venv /opt/lint \
+    && /opt/lint/bin/pip install --no-cache-dir yamllint==1.30.0 \
+    && npm install --global --registry=https://registry.npmjs.org prettier@3.6.2 markdownlint-cli@0.49.1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/opt/lint/bin:${PATH}"
+WORKDIR /workspace

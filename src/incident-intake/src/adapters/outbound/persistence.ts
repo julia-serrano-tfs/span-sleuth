@@ -7,5 +7,7 @@ export abstract class PostgresUnitOfWork implements UnitOfWork {
 export abstract class PostgresOutboxRepository implements OutboxRepository {
   abstract append(...args: Parameters<OutboxRepository["append"]>): ReturnType<OutboxRepository["append"]>;
   abstract claimBatch(...args: Parameters<OutboxRepository["claimBatch"]>): ReturnType<OutboxRepository["claimBatch"]>;
-  abstract markPublished(...args: Parameters<OutboxRepository["markPublished"]>): ReturnType<OutboxRepository["markPublished"]>;
+  abstract markPublished(
+    ...args: Parameters<OutboxRepository["markPublished"]>
+  ): ReturnType<OutboxRepository["markPublished"]>;
 }
