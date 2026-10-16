@@ -19,13 +19,28 @@ Generate a token in PowerShell:
 ```
 
 Paste the result into `INTAKE_WEBHOOK_TOKEN` in `.env.incidents`. Do not commit
-that file. Create it before starting Grafana: Compose loads the same token into
+that file. Create it before starting Grafana with the preview overlay: Compose
+loads the same token into
 Grafana, and the provisioned `incident-intake` contact point sends it automatically
 as a Bearer credential. No manual token entry in Grafana is needed.
 
-If the token changes, restart Intake and recreate the Grafana container using
-your usual Compose files and any local certificate overrides. A container restart
-alone does not reload its environment variables.
+From the repository root, enable the opt-in preview overlay:
+
+```powershell
+docker compose -f compose.yaml -f compose.full.yaml -f compose.observability.yaml -f compose.incidents.yaml up -d grafana
+```
+
+Include any local certificate overrides you normally use. The ordinary
+observability stack does not require `.env.incidents`; only this preview overlay
+loads the file.
+
+If the token changes, restart Intake and recreate Grafana with the same files:
+
+```powershell
+docker compose -f compose.yaml -f compose.full.yaml -f compose.observability.yaml -f compose.incidents.yaml up -d --force-recreate grafana
+```
+
+A container restart alone does not reload its environment variables.
 
 ## Run
 
