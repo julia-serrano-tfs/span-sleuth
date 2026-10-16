@@ -43,6 +43,8 @@ services:
   grafana:
     image: ${GRAFANA_IMAGE}
     container_name: grafana
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:
@@ -60,9 +62,6 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
-    env_file:
-      - ./src/incident-intake/.env.incidents
-
   # Prometheus
   prometheus:
     image: ${PROMETHEUS_IMAGE}
